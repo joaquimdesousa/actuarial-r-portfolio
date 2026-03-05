@@ -1,0 +1,211 @@
+---
+title: "Finance & Risk Analytics Portfolio — Technical Walkthrough"
+author: "Joaquim De Sousa"
+date: "`r format(Sys.Date(), '%B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: flatly
+    code_folding: show
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo       = TRUE,
+  message    = FALSE,
+  warning    = FALSE,
+  fig.width  = 9,
+  fig.height = 5.5,
+  fig.align  = "center",
+  comment    = "#>"
+)
+```
+
+## What This Demonstrates
+
+This portfolio is built around three end-to-end finance and risk analytics projects, each following a **v0 → failure → fix** structure. This isn't a gimmick — it's how real analysis works. You form a hypothesis, test it, find a flaw, and iterate. Hiring managers want to see that you can do this cycle fluently, not just copy a textbook solution.
+
+Each project shows:
+
+- **Data quality discipline**: assertions and defensive checks before any modelling
+- **Iterative thinking**: the wrong approach is shown first, with a clear explanation of *why* it's wrong and *what it costs*
+- **Statistical rigour**: proper diagnostics, multiple model comparisons, and correct evaluation methodology
+- **Business communication**: every result is framed in terms of what it means for decisions
+
+---
+
+## Shared Infrastructure
+
+All three projects use a common `utils.R` module containing validated helper functions, logging, output management, and a consistent plotting theme. This mirrors real team environments where shared utilities reduce code duplication and ensure consistency.
+
+```{r load-utils}
+source("utils.R")
+```
+
+---
+
+## Project 1 — Insurance Claims Frequency & Severity
+
+### Business Context
+
+A personal-lines insurer needs to estimate expected claims costs per policy to set premiums. The pricing actuary must model two components separately — **how often** claims happen (frequency) and **how large** they are (severity) — then combine them into expected loss per policy.
+
+### The Deliberate Mistake: Ignoring Exposure
+
+When modelling claim counts with a Poisson GLM, you must account for how long each policy was on risk. A policy active for 6 months should naturally have about half the claims of a full-year policy. Forgetting the `offset(log(exposure))` term treats every policy as if it had identical time on risk, biasing frequency estimates.
+
+```{r project1-run}
+# Run the full claims pipeline
+source("claims_frequency_severity.R")
+```
+
+### Key Results
+
+```{r project1-results}
+# Frequency model comparison
+cat("Frequency model selection:", freq_model_type, "\n")
+cat("v0 AIC (no offset):", round(AIC(freq_v0), 1), "\n")
+cat("Final AIC:         ", round(AIC(freq_final), 1), "\n")
+cat("AIC improvement:   ", round(AIC(freq_v0) - AIC(freq_final), 1), "\n")
+```
+
+The AIC drop confirms that including exposure substantially improves the model. Without the offset, the model confuses exposure variation with risk variation.
+
+```{r project1-table}
+# Portfolio summary by region
+knitr::kable(
+  summary_by_region,
+  caption = "Expected Loss Summary by Region",
+  digits  = c(0, 0, 1, 4, 4, 0, 2, 2, 2, 0),
+  format.args = list(big.mark = ",")
+)
+```
+
+**Business interpretation**: Remote regions show the highest expected loss per policy, driven by both higher claim frequency (longer driving distances, worse road conditions) and higher severity. This segment warrants closer underwriting scrutiny and potentially a rate increase.
+
+### Severity: Why Truncation Matters
+
+Claims above the $50,000 reporting cap are censored — we observe the cap, not the true loss. Ignoring this truncation underestimates tail severity:
+
+```{r severity-comparison}
+cat("Naive sample mean (including capped claims): $", round(sev_mean_naive, 0), "\n")
+cat("Lognormal theoretical mean (correcting for truncation): $", round(sev_mean_lnorm, 0), "\n")
+cat("Tail underestimation: ", round((1 - sev_mean_naive / sev_mean_lnorm) * 100, 1), "%\n")
+```
+
+---
+
+## Project 2 — Credit Risk Scoring
+
+### Business Context
+
+A bank needs a probability-of-default (PD) model to score loan applicants. The PD feeds directly into Expected Loss = PD × LGD × EAD, which determines pricing, provisioning, and capital requirements under Basel regulations.
+
+### The Deliberate Mistake: Data Leakage
+
+Evaluating a model on the same data used to fit it (training set) inflates performance metrics. The model has already memorised the outcomes — it's measuring recall, not prediction.
+
+```{r project2-run}
+source("credit_risk_scoring.R")
+```
+
+### Discrimination Metrics
+
+```{r project2-metrics}
+metrics_df <- tibble(
+  Metric = c("AUC", "Gini", "KS Statistic", "Brier Score"),
+  `v0 (Leaked)` = c(round(v0_auc, 4), "N/A", "N/A", "N/A"),
+  `v1 (Logistic)` = c(round(auc_v1, 4), round(gini_v1, 4),
+                       round(ks_v1, 4), round(brier_v1, 4)),
+  `v2 (LASSO)` = c(round(auc_lasso, 4), round(gini_lasso, 4),
+                    round(ks_lasso, 4), round(brier_lasso, 4))
+)
+knitr::kable(metrics_df, caption = "Model Discrimination Comparison (Test Set)")
+```
+
+The v0 AUC is inflated by `r round((v0_auc - max(auc_v1, auc_lasso)) * 100, 1)` percentage points — a meaningful overestimate that could lead to approving loans that will default.
+
+### Calibration
+
+A model can rank-order well (high AUC) but still produce miscalibrated probabilities. The calibration table checks whether predicted PDs match observed default rates:
+
+```{r project2-calibration}
+knitr::kable(
+  calibration,
+  caption = "Calibration by Predicted PD Decile",
+  digits = 4
+)
+```
+
+### Risk Band Summary
+
+```{r project2-portfolio}
+knitr::kable(
+  portfolio,
+  caption = "Portfolio Risk Band Summary (for Credit Committee)",
+  digits = c(0, 0, 1, 4, 4, 0, 3, 0, 2)
+)
+```
+
+**Business interpretation**: The "Very High" band (top 5% of predicted PD) shows a markedly higher observed default rate. This segment requires enhanced due diligence, higher pricing, or outright decline depending on the bank's risk appetite.
+
+---
+
+## Project 3 — Market Risk Simulation & Stress Testing
+
+### Business Context
+
+A portfolio manager holds a diversified 60/30/10 allocation across equity, bonds, and commodities. Risk management needs to quantify how much the portfolio could lose in normal conditions (VaR/CVaR) and under stress scenarios (GFC, COVID, stagflation).
+
+### The Deliberate Mistake: Independence Assumption
+
+Simulating asset returns independently ignores co-movement. During crises, correlations spike — equity and commodities drop together while investors flee to bonds. Independent simulation allows unrealistically good diversification, understating tail risk.
+
+```{r project3-run}
+source("market_risk_simulation.R")
+```
+
+### VaR/CVaR Comparison
+
+```{r project3-table}
+knitr::kable(
+  full_risk_summary %>% filter(confidence == 0.99),
+  caption = "VaR and CVaR at 99% Confidence (1-day and 10-day horizons)",
+  digits  = 6
+)
+```
+
+The move from independent to correlated simulation increases VaR — this is the diversification benefit being correctly adjusted. The stress scenarios show substantially larger potential losses, which is exactly what regulators want to see in a bank's ICAAP submission.
+
+### Risk Attribution
+
+```{r project3-attribution}
+attr_df <- tibble(
+  Asset = assets,
+  `Component VaR (%)` = comp_var_pct
+)
+knitr::kable(attr_df, caption = "Component VaR — Where Does the Risk Come From?")
+```
+
+**Business interpretation**: Equity dominates portfolio risk despite being only 60% of the allocation. This is expected given equity's higher volatility and positive correlation with commodities. A portfolio manager considering risk reduction would get the most benefit from reducing equity exposure or hedging equity tail risk.
+
+---
+
+## How to Talk Through This in an Interview
+
+1. **Start with the business question.** "The insurer needed to price policies accurately across different risk segments."
+2. **Show the first attempt and why it's wrong.** "My first model ignored exposure, which biased frequency estimates — here's the AIC comparison showing how much worse it was."
+3. **Explain the fix and what it changes for decisions.** "Adding the offset and testing for overdispersion improved the model substantially. The pricing table now correctly identifies Remote regions as the highest-risk segment."
+4. **Point to quality markers.** "The code includes data validation, diagnostic plots, and unit tests. You can run `testthat::test_dir('tests')` to verify the helper functions."
+5. **Connect to their stack.** Adapt the narrative: if they use Python, emphasise that the methodology transfers (GLMs, LASSO, Monte Carlo are language-agnostic). If they use SAS, emphasise the statistical thinking.
+
+---
+
+## Reproducibility
+
+```{r session-info}
+sessionInfo()
+```
