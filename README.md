@@ -155,16 +155,3 @@ rmarkdown::render("portfolio_walkthrough.Rmd")
 
 ---
 
-## Design Decisions
-
-**Why simulated data?** Real financial data can't be shared publicly. Simulation with a known data-generating process lets us verify that models recover the true parameters — a standard approach in actuarial science and risk analytics.
-
-**Why v0 → fix?** Interviewers want to see that you can identify and correct modelling errors, not just copy a textbook. Showing the mistake first demonstrates critical thinking and real-world debugging skills.
-
-**Why shared `utils.R`?** Real teams use shared utilities. This module enforces consistency across projects and demonstrates awareness of professional code organisation.
-
----
-
-## License
-
-This portfolio is provided for educational and interview demonstration purposes.
