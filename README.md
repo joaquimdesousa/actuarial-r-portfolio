@@ -75,7 +75,9 @@ actuarial-r-portfolio/
 | **v1 (fix)** | Cholesky decomposition preserves correlation structure between equity, bonds, and commodities |
 | **v2 (final)** | GARCH(1,1) models volatility clustering; simulation uses conditional volatility from the current regime |
 
-**Stress testing** applies three economically motivated scenarios — GFC 2008, COVID 2020, and Stagflation — each with calibrated mean and volatility shocks. **Kupiec backtest** validates the VaR model against historical breaches (Basel requirement). **Tail dependence analysis** compares empirical crash co-occurrence to Gaussian copula predictions.
+**Stress testing** applies three economically motivated scenarios 
+
+**Tail dependence analysis** compares empirical crash co-occurrence to Gaussian copula predictions.
 
 **Key techniques:** Monte Carlo simulation (50,000 paths), Cholesky decomposition, GARCH(1,1), EWMA fallback, VaR/CVaR at 95/99/99.5%, 10-day horizon scaling (Basel), component VaR, Kupiec POF test, copula tail dependence
 
