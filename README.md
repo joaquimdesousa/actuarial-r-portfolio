@@ -3,15 +3,7 @@
 **Author:** Joaquim De Sousa
 **Language:** R
 **Focus:** Insurance pricing, credit risk, market risk
-**Live showcase:** [View the interactive portfolio →](https://joaquimdesousa.github.io/actuarial-r-portfolio/)
 
----
-
-## What This Is
-
-Three end-to-end risk analytics projects built in R, each following a **v0 → failure → fix** structure. Every project starts with a deliberately wrong model, explains exactly why it fails, and iterates to a correct solution with full diagnostics.
-
-This isn't a textbook copy — it's designed to demonstrate the kind of iterative thinking, statistical rigour, and communication clarity that hiring managers actually test for in actuarial and quant finance interviews.
 
 ---
 
